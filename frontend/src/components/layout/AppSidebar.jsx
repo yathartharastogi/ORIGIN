@@ -1,20 +1,19 @@
+
+import { useLocation, useNavigate } from "react-router-dom";
 import {
   Activity,
   Bot,
-  ChevronDown,
   CircleHelp,
-  FileSearch,
-  History,
   LayoutDashboard,
+  LogOut,
   Search,
   Settings,
   ShieldCheck,
-  UserRound,
-  WalletCards,
-  Zap,
+  Terminal,
+  History,
 } from "lucide-react";
 
-import { useLocation, useNavigate } from "react-router-dom";
+import { useAuth } from "@/context/AuthContext";
 
 import {
   Sidebar,
@@ -31,360 +30,241 @@ import {
 
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
-
 const navigation = [
   {
     title: "Dashboard",
+    url: "/dashboard",
     icon: LayoutDashboard,
-    path: "/dashboard",
   },
   {
     title: "Investigate",
+    url: "/investigate",
     icon: Search,
-    path: "/investigate",
   },
   {
     title: "Investigation Log",
+    url: "/investigations",
     icon: History,
-    path: "/investigations",
   },
 ];
 
+function getInitials(name) {
+  if (!name) return "U";
 
-const systems = [
-  {
-    name: "Payment Gateway",
-    icon: WalletCards,
-  },
-  {
-    name: "Bank Settlement",
-    icon: Activity,
-  },
-  {
-    name: "Internal Ledger",
-    icon: FileSearch,
-  },
-];
+  return name
+    .trim()
+    .split(/\s+/)
+    .map((word) => word[0])
+    .join("")
+    .slice(0, 2)
+    .toUpperCase();
+}
 
-
-export default function AppSidebar() {
-  const navigate = useNavigate();
-  const location = useLocation();
-
-
-  const isActive = (path) => {
-    if (path === "/dashboard") {
-      return location.pathname === "/dashboard";
-    }
-
-    if (path === "/investigate") {
-      return location.pathname === "/investigate";
-    }
-
-    if (path === "/investigations") {
-      return location.pathname.startsWith("/investigations");
-    }
-
-    return location.pathname === path;
+function getRoleName(role) {
+  const roles = {
+    ADMIN: "Administrator",
+    SUPPORT_AGENT: "Support Agent",
+    ANALYST: "Analyst",
+    VIEWER: "Viewer",
   };
 
+  return roles[role] || role || "User";
+}
+
+export default function AppSidebar() {
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const { user, logout } = useAuth();
+
+  const handleLogout = async () => {
+    try {
+      await logout();
+    } finally {
+      navigate("/login", { replace: true });
+    }
+  };
 
   return (
     <Sidebar
-      variant="sidebar"
       collapsible="icon"
-      className="border-r border-white/[0.06]"
+      className="border-r border-white/[0.06] bg-[#07090d]"
     >
-
-      {/* ================================================= */}
-      {/* LOGO */}
-      {/* ================================================= */}
-
-      <SidebarHeader className="border-b border-white/[0.05]">
-        <div className="flex h-14 items-center gap-3 px-2">
-
-          <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-cyan-500/20 bg-cyan-500/10">
-            <ShieldCheck className="h-4.5 w-4.5 text-cyan-400" />
-
-            <div className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(34,211,238,0.8)]" />
+      {/* Header */}
+      <SidebarHeader className="border-b border-white/[0.06] px-4 py-5">
+        <button
+          onClick={() => navigate("/dashboard")}
+          className="flex w-full items-center gap-3 text-left"
+        >
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-cyan-400/20 bg-cyan-400/[0.08]">
+            <ShieldCheck className="h-5 w-5 text-cyan-400" />
           </div>
 
-          <div className="flex min-w-0 flex-col group-data-[collapsible=icon]:hidden">
-            <span className="truncate text-sm font-semibold tracking-tight text-white">
+          <div className="min-w-0 group-data-[collapsible=icon]:hidden">
+            <div className="truncate text-sm font-semibold tracking-tight text-white">
               LedgerLens
-            </span>
+            </div>
 
-            <span className="truncate text-[9px] uppercase tracking-[0.18em] text-slate-600">
+            <div className="mt-0.5 truncate text-[9px] uppercase tracking-[0.18em] text-slate-600">
               Payment Intelligence
-            </span>
+            </div>
           </div>
-
-        </div>
+        </button>
       </SidebarHeader>
 
-
-      <SidebarContent className="px-2">
-
-
-        {/* ================================================= */}
-        {/* MAIN NAVIGATION */}
-        {/* ================================================= */}
-
+      <SidebarContent className="px-2 py-4">
+        {/* Navigation */}
         <SidebarGroup>
-          <SidebarGroupLabel className="px-2 text-[9px] uppercase tracking-[0.18em] text-slate-700">
+          <SidebarGroupLabel className="px-3 text-[9px] uppercase tracking-[0.18em] text-slate-600 group-data-[collapsible=icon]:hidden">
             Workspace
           </SidebarGroupLabel>
 
           <SidebarGroupContent>
             <SidebarMenu>
-
               {navigation.map((item) => {
-                const active = isActive(item.path);
+                const Icon = item.icon;
+
+                const isActive =
+                  location.pathname === item.url ||
+                  (item.url !== "/dashboard" &&
+                    location.pathname.startsWith(`${item.url}/`));
 
                 return (
                   <SidebarMenuItem key={item.title}>
-
                     <SidebarMenuButton
-                      onClick={() => navigate(item.path)}
-                      isActive={active}
                       tooltip={item.title}
+                      onClick={() => navigate(item.url)}
                       className={`
-                        h-10 transition-all duration-200
+                        relative h-10 rounded-lg px-3
+                        transition-all duration-200
                         ${
-                          active
-                            ? "bg-cyan-500/10 text-cyan-400 hover:bg-cyan-500/10 hover:text-cyan-300"
+                          isActive
+                            ? "bg-cyan-400/[0.08] text-cyan-300 hover:bg-cyan-400/[0.1] hover:text-cyan-200"
                             : "text-slate-500 hover:bg-white/[0.04] hover:text-slate-200"
                         }
                       `}
                     >
-
-                      <item.icon
-                        className={`h-4 w-4 ${
-                          active
-                            ? "text-cyan-400"
-                            : "text-slate-600"
-                        }`}
-                      />
-
-                      <span className="text-xs font-medium">
-                        {item.title}
-                      </span>
-
-                      {active && (
-                        <div className="ml-auto h-1.5 w-1.5 rounded-full bg-cyan-400 shadow-[0_0_7px_rgba(34,211,238,0.8)]" />
+                      {isActive && (
+                        <span className="absolute left-0 h-5 w-0.5 rounded-full bg-cyan-400" />
                       )}
 
-                    </SidebarMenuButton>
+                      <Icon className="h-4 w-4 shrink-0" />
 
+                      <span className="text-sm group-data-[collapsible=icon]:hidden">
+                        {item.title}
+                      </span>
+                    </SidebarMenuButton>
                   </SidebarMenuItem>
                 );
               })}
-
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>
 
-
-        {/* ================================================= */}
-        {/* CONNECTED SYSTEMS */}
-        {/* ================================================= */}
-
-        <SidebarGroup className="mt-3">
-
-          <SidebarGroupLabel className="px-2 text-[9px] uppercase tracking-[0.18em] text-slate-700">
+        {/* Connected Systems */}
+        <SidebarGroup className="mt-5">
+          <SidebarGroupLabel className="px-3 text-[9px] uppercase tracking-[0.18em] text-slate-600 group-data-[collapsible=icon]:hidden">
             Connected Systems
           </SidebarGroupLabel>
 
           <SidebarGroupContent>
-            <SidebarMenu>
+            <div className="space-y-1 px-2 group-data-[collapsible=icon]:px-0">
+              {[
+                ["Gateway", "Operational"],
+                ["Bank", "Operational"],
+                ["Ledger", "Operational"],
+              ].map(([name, status]) => (
+                <div
+                  key={name}
+                  className="flex items-center gap-3 rounded-lg px-2 py-2"
+                >
+                  <span className="relative flex h-2 w-2 shrink-0">
+                    <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-40" />
+                    <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
+                  </span>
 
-              {systems.map((system) => (
-                <SidebarMenuItem key={system.name}>
-
-                  <SidebarMenuButton
-                    tooltip={system.name}
-                    className="h-9 text-slate-500 hover:bg-white/[0.03] hover:text-slate-300"
-                  >
-
-                    <system.icon className="h-3.5 w-3.5 text-slate-600" />
-
-                    <span className="text-[11px]">
-                      {system.name}
-                    </span>
-
-                    <div className="ml-auto flex items-center gap-1.5">
-                      <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-400" />
-
-                      <span className="text-[8px] uppercase tracking-wider text-emerald-500 group-data-[collapsible=icon]:hidden">
-                        Live
-                      </span>
-                    </div>
-
-                  </SidebarMenuButton>
-
-                </SidebarMenuItem>
+                  <div className="min-w-0 group-data-[collapsible=icon]:hidden">
+                    <div className="text-xs text-slate-400">{name}</div>
+                    <div className="text-[9px] text-slate-600">{status}</div>
+                  </div>
+                </div>
               ))}
-
-            </SidebarMenu>
+            </div>
           </SidebarGroupContent>
         </SidebarGroup>
 
-
-        {/* ================================================= */}
-        {/* AI ENGINE */}
-        {/* ================================================= */}
-
-        <SidebarGroup className="mt-3">
-
-          <SidebarGroupLabel className="px-2 text-[9px] uppercase tracking-[0.18em] text-slate-700">
-            Intelligence
+        {/* AI Engine */}
+        <SidebarGroup className="mt-5">
+          <SidebarGroupLabel className="px-3 text-[9px] uppercase tracking-[0.18em] text-slate-600 group-data-[collapsible=icon]:hidden">
+            AI Engine
           </SidebarGroupLabel>
 
           <SidebarGroupContent>
-            <SidebarMenu>
+            <div className="mx-2 rounded-xl border border-cyan-400/10 bg-cyan-400/[0.025] p-3 group-data-[collapsible=icon]:mx-0">
+              <div className="flex items-center gap-3">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-cyan-400/[0.07]">
+                  <Bot className="h-4 w-4 text-cyan-400" />
+                </div>
 
-              <SidebarMenuItem>
+                <div className="min-w-0 group-data-[collapsible=icon]:hidden">
+                  <div className="text-xs font-medium text-slate-300">
+                    LedgerLens AI
+                  </div>
 
-                <SidebarMenuButton
-                  tooltip="AI Engine"
-                  className="h-9 text-slate-500 hover:bg-white/[0.03] hover:text-slate-300"
-                >
-
-                  <Bot className="h-3.5 w-3.5 text-cyan-500" />
-
-                  <span className="text-[11px]">
-                    AI Engine
-                  </span>
-
-                  <div className="ml-auto flex items-center gap-1.5">
-                    <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400" />
-
-                    <span className="text-[8px] uppercase tracking-wider text-cyan-500 group-data-[collapsible=icon]:hidden">
+                  <div className="mt-1 flex items-center gap-1.5">
+                    <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                    <span className="text-[9px] text-slate-600">
                       Ready
                     </span>
                   </div>
-
-                </SidebarMenuButton>
-
-              </SidebarMenuItem>
-
-            </SidebarMenu>
+                </div>
+              </div>
+            </div>
           </SidebarGroupContent>
-
         </SidebarGroup>
 
-
-        {/* ================================================= */}
-        {/* SETTINGS */}
-        {/* ================================================= */}
-
-        <SidebarGroup className="mt-3">
-
-          <SidebarGroupLabel className="px-2 text-[9px] uppercase tracking-[0.18em] text-slate-700">
-            System
-          </SidebarGroupLabel>
-
-          <SidebarGroupContent>
-
-            <SidebarMenu>
-
-              <SidebarMenuItem>
-
-                <SidebarMenuButton
-                  tooltip="Settings"
-                  className="h-9 text-slate-500 hover:bg-white/[0.03] hover:text-slate-300"
-                >
-                  <Settings className="h-3.5 w-3.5" />
-
-                  <span className="text-[11px]">
-                    Settings
-                  </span>
-                </SidebarMenuButton>
-
-              </SidebarMenuItem>
-
-
-              <SidebarMenuItem>
-
-                <SidebarMenuButton
-                  tooltip="Help & Support"
-                  className="h-9 text-slate-500 hover:bg-white/[0.03] hover:text-slate-300"
-                >
-                  <CircleHelp className="h-3.5 w-3.5" />
-
-                  <span className="text-[11px]">
-                    Help & Support
-                  </span>
-                </SidebarMenuButton>
-
-              </SidebarMenuItem>
-
-            </SidebarMenu>
-
-          </SidebarGroupContent>
-
-        </SidebarGroup>
-
+        {/* Bottom utility links */}
+      
       </SidebarContent>
 
+      {/* User / Logout */}
+      <SidebarFooter className="border-t border-white/[0.06] p-3">
+        <div className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-2.5">
+          <Avatar className="h-9 w-9 shrink-0 border border-white/10">
+            <AvatarFallback className="bg-cyan-400/10 text-xs font-semibold text-cyan-300">
+              {getInitials(user?.name)}
+            </AvatarFallback>
+          </Avatar>
 
-      {/* ================================================= */}
-      {/* USER */}
-      {/* ================================================= */}
+          <div className="min-w-0 flex-1 group-data-[collapsible=icon]:hidden">
+            <div className="truncate text-xs font-medium text-slate-200">
+              {user?.name || "User"}
+            </div>
 
-      <SidebarFooter className="border-t border-white/[0.05] p-2">
-
-        <SidebarMenu>
-
-          <SidebarMenuItem>
-
-            <SidebarMenuButton
-              tooltip="Account"
-              className="h-12 text-slate-400 hover:bg-white/[0.04]"
-            >
-
-              <Avatar className="h-8 w-8 border border-white/[0.08]">
-                <AvatarFallback className="bg-cyan-500/10 text-xs text-cyan-400">
-                  AK
-                </AvatarFallback>
-              </Avatar>
-
-              <div className="flex min-w-0 flex-1 flex-col text-left group-data-[collapsible=icon]:hidden">
-                <span className="truncate text-xs font-medium text-slate-300">
-                  Alex Kumar
-                </span>
-
-                <span className="truncate text-[9px] text-slate-600">
-                  Support Agent
-                </span>
-              </div>
-
-              <ChevronDown className="h-3.5 w-3.5 text-slate-700 group-data-[collapsible=icon]:hidden" />
-
-            </SidebarMenuButton>
-
-          </SidebarMenuItem>
-
-        </SidebarMenu>
-
-
-        {/* AI status */}
-        <div className="mt-2 flex items-center gap-2 rounded-lg border border-white/[0.04] bg-white/[0.015] px-3 py-2 group-data-[collapsible=icon]:hidden">
-
-          <div className="relative">
-            <div className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-
-            <div className="absolute inset-0 animate-ping rounded-full bg-emerald-400 opacity-40" />
+            <div className="mt-0.5 truncate text-[10px] text-slate-600">
+              {getRoleName(user?.role)}
+            </div>
           </div>
 
-          <span className="text-[9px] text-slate-600">
-            All systems operational
-          </span>
-
+          <button
+            onClick={handleLogout}
+            title="Logout"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-600 transition hover:bg-red-500/10 hover:text-red-400 group-data-[collapsible=icon]:hidden"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
         </div>
 
+        {/* Collapsed logout */}
+        <button
+          onClick={handleLogout}
+          title="Logout"
+          className="mt-2 hidden h-9 w-full items-center justify-center rounded-lg text-slate-600 transition hover:bg-red-500/10 hover:text-red-400 group-data-[collapsible=icon]:flex"
+        >
+          <LogOut className="h-4 w-4" />
+        </button>
       </SidebarFooter>
-
     </Sidebar>
   );
 }
+

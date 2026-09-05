@@ -1,38 +1,26 @@
+
 import { useEffect, useState } from "react";
 import { motion } from "motion/react";
 import {
   ArrowLeft,
   Bot,
   CheckCircle2,
-  ChevronDown,
   CircleAlert,
   Clock3,
   Database,
+  Download,
   GitCompare,
   Loader2,
   MessageSquare,
   Send,
   Server,
   ShieldAlert,
+  Sparkles,
   UserRound,
   XCircle,
   Zap,
 } from "lucide-react";
-
 import { useNavigate, useParams } from "react-router-dom";
-
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card";
-
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-
-import PageTransition from "@/components/layout/PageTransition";
 
 import {
   getInvestigation,
@@ -40,426 +28,490 @@ import {
   sendInvestigationMessage,
 } from "@/services/investigation.api";
 
+import { generateInvestigationReport } from "@/utils/generateInvestigationReport";
 
-/* =========================================================
-   SEVERITY BADGE
-========================================================= */
+function formatDate(value) {
+  if (!value) return "No timestamp";
 
-function SeverityBadge({ severity }) {
-  const styles = {
-    LOW: "border-emerald-500/20 bg-emerald-500/10 text-emerald-400",
-    MEDIUM: "border-yellow-500/20 bg-yellow-500/10 text-yellow-400",
-    HIGH: "border-orange-500/20 bg-orange-500/10 text-orange-400",
-    CRITICAL: "border-red-500/20 bg-red-500/10 text-red-400",
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return "No timestamp";
+  }
+
+  return date.toLocaleString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  });
+}
+
+function getStatusConfig(status) {
+  switch (status) {
+    case "SUCCESS":
+    case "SETTLED":
+    case "POSTED":
+      return {
+        icon: CheckCircle2,
+        color: "text-emerald-400",
+        bg: "bg-emerald-400/10",
+        border: "border-emerald-400/15",
+      };
+
+    case "PENDING":
+      return {
+        icon: CircleAlert,
+        color: "text-amber-400",
+        bg: "bg-amber-400/10",
+        border: "border-amber-400/15",
+      };
+
+    case "FAILED":
+    case "REJECTED":
+    case "MISSING":
+      return {
+        icon: XCircle,
+        color: "text-red-400",
+        bg: "bg-red-400/10",
+        border: "border-red-400/15",
+      };
+
+    default:
+      return {
+        icon: CircleAlert,
+        color: "text-slate-400",
+        bg: "bg-white/[0.04]",
+        border: "border-white/[0.08]",
+      };
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Timeline                                                                    */
+/* -------------------------------------------------------------------------- */
+
+function TransactionTimeline({ investigation }) {
+  const evidence = investigation?.evidenceSnapshot;
+
+  if (!evidence) return null;
+
+  const gateway = evidence.gateway?.records?.[0];
+  const bank = evidence.bank?.records?.[0];
+  const ledger = evidence.ledger?.records?.[0];
+
+  const events = [
+    {
+      system: "Gateway",
+      icon: Server,
+      status: gateway?.status || "MISSING",
+      timestamp: gateway?.processedAt,
+      reference: gateway?.gatewayReference,
+      message:
+        gateway?.responseMessage ||
+        "Gateway record was not found.",
+    },
+    {
+      system: "Bank",
+      icon: Database,
+      status: bank?.status || "MISSING",
+      timestamp: bank?.settledAt || bank?.receivedAt,
+      reference: bank?.bankReference,
+      message:
+        bank?.responseMessage ||
+        "Bank record was not found.",
+    },
+    {
+      system: "Ledger",
+      icon: GitCompare,
+      status: ledger?.status || "MISSING",
+      timestamp: ledger?.postedAt,
+      reference: ledger?.ledgerReference,
+      message: ledger
+        ? "Ledger entry recorded."
+        : "No ledger record was found.",
+    },
+  ];
+
+  return (
+    <section className="rounded-2xl border border-white/[0.07] bg-[#090c10] p-5 sm:p-6 lg:p-7">
+      {/* Header */}
+      <div className="mb-7 flex items-start justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <Clock3 className="h-4 w-4 text-cyan-400" />
+
+            <h2 className="text-sm font-semibold text-white">
+              Transaction Timeline
+            </h2>
+          </div>
+
+          <p className="mt-1.5 text-xs leading-5 text-slate-500">
+            Chronological payment events across connected systems.
+          </p>
+        </div>
+
+        <span className="hidden rounded-md border border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5 font-mono text-[8px] tracking-wider text-slate-700 sm:block">
+          EVENT TRACE
+        </span>
+      </div>
+
+      {/* Timeline */}
+      <div className="relative">
+        <div className="absolute bottom-6 left-5 top-6 w-px bg-white/[0.08]" />
+
+        <div className="space-y-8">
+          {events.map((event, index) => {
+            const statusConfig = getStatusConfig(event.status);
+            const StatusIcon = statusConfig.icon;
+            const SystemIcon = event.icon;
+
+            return (
+              <motion.div
+                key={event.system}
+                initial={{
+                  opacity: 0,
+                  x: -10,
+                }}
+                animate={{
+                  opacity: 1,
+                  x: 0,
+                }}
+                transition={{
+                  duration: 0.4,
+                  delay: index * 0.1,
+                }}
+                className="relative flex gap-5"
+              >
+                {/* Node */}
+                <div
+                  className={`relative z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border ${statusConfig.border} bg-[#090c10]`}
+                >
+                  <SystemIcon
+                    className={`h-4 w-4 ${statusConfig.color}`}
+                  />
+
+                  {event.status === "PENDING" && (
+                    <span className="absolute inset-1 animate-ping rounded-full bg-amber-400/10" />
+                  )}
+                </div>
+
+                {/* Event */}
+                <div className="min-w-0 flex-1">
+                  <div className="rounded-xl border border-white/[0.06] bg-white/[0.02] p-4.5">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2.5">
+                          <h3 className="text-sm font-semibold text-white">
+                            {event.system}
+                          </h3>
+
+                          <div
+                            className={`flex items-center gap-1.5 rounded-md border px-2 py-1 text-[9px] font-semibold ${statusConfig.border} ${statusConfig.bg} ${statusConfig.color}`}
+                          >
+                            <StatusIcon className="h-3 w-3" />
+                            {event.status}
+                          </div>
+                        </div>
+
+                        <p className="mt-2.5 max-w-2xl text-xs leading-5 text-slate-500">
+                          {event.message}
+                        </p>
+                      </div>
+
+                      <div className="shrink-0 sm:text-right">
+                        <div className="font-mono text-[10px] text-slate-300">
+                          {formatDate(event.timestamp)}
+                        </div>
+
+                        {event.timestamp && (
+                          <div className="mt-1 text-[9px] text-slate-700">
+                            Event timestamp
+                          </div>
+                        )}
+                      </div>
+                    </div>
+
+                    {event.reference && (
+                      <div className="mt-4 flex items-center gap-2 border-t border-white/[0.05] pt-3">
+                        <span className="font-mono text-[9px] text-slate-700">
+                          REFERENCE
+                        </span>
+
+                        <span className="font-mono text-[9px] text-slate-400">
+                          {event.reference}
+                        </span>
+                      </div>
+                    )}
+
+                    {!event.timestamp && (
+                      <div className="mt-4 flex items-center gap-2 rounded-lg border border-red-400/10 bg-red-400/[0.03] px-3 py-2.5">
+                        <XCircle className="h-3.5 w-3.5 text-red-400" />
+
+                        <span className="text-[10px] text-red-300">
+                          No corresponding timestamp available
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Pipeline                                                                    */
+/* -------------------------------------------------------------------------- */
+
+function PipelineCard({
+  name,
+  status,
+  reference,
+  icon: Icon,
+}) {
+  const config = getStatusConfig(status);
+  const StatusIcon = config.icon;
+
+  return (
+    <motion.div
+      whileHover={{ y: -2 }}
+      transition={{ duration: 0.2 }}
+      className={`rounded-xl border ${config.border} ${config.bg} p-5`}
+    >
+      <div className="flex items-center justify-between">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg border border-white/[0.07] bg-black/20">
+          <Icon className={`h-4 w-4 ${config.color}`} />
+        </div>
+
+        <StatusIcon className={`h-4 w-4 ${config.color}`} />
+      </div>
+
+      <div className="mt-5">
+        <div className="text-xs font-semibold text-white">
+          {name}
+        </div>
+
+        <div
+          className={`mt-1.5 font-mono text-[9px] font-semibold ${config.color}`}
+        >
+          {status}
+        </div>
+
+        {reference && (
+          <div className="mt-3 truncate rounded-md border border-white/[0.05] bg-black/10 px-2 py-1.5 font-mono text-[8px] text-slate-600">
+            {reference}
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Stats                                                                       */
+/* -------------------------------------------------------------------------- */
+
+function StatCard({
+  label,
+  value,
+  icon: Icon,
+  accent = "cyan",
+}) {
+  const accentClasses = {
+    cyan: "text-cyan-400 bg-cyan-400/10 border-cyan-400/10",
+    green:
+      "text-emerald-400 bg-emerald-400/10 border-emerald-400/10",
+    amber:
+      "text-amber-400 bg-amber-400/10 border-amber-400/10",
+    red: "text-red-400 bg-red-400/10 border-red-400/10",
   };
 
   return (
-    <Badge
-      variant="outline"
-      className={`tracking-wider ${
-        styles[severity] || styles.MEDIUM
-      }`}
-    >
-      {severity || "UNKNOWN"}
-    </Badge>
+    <div className="rounded-xl border border-white/[0.07] bg-[#090c10] p-4.5">
+      <div className="flex items-center justify-between">
+        <span className="text-[10px] uppercase tracking-[0.14em] text-slate-600">
+          {label}
+        </span>
+
+        <div
+          className={`flex h-8 w-8 items-center justify-center rounded-lg border ${accentClasses[accent]}`}
+        >
+          <Icon className="h-4 w-4" />
+        </div>
+      </div>
+
+      <div className="mt-3.5 truncate text-lg font-semibold text-white">
+        {value}
+      </div>
+    </div>
   );
 }
 
+/* -------------------------------------------------------------------------- */
+/* Evidence                                                                    */
+/* -------------------------------------------------------------------------- */
 
-/* =========================================================
-   STATUS BADGE
-========================================================= */
-
-function StatusBadge({ status }) {
-  const completed = status === "COMPLETED";
-
+function EvidenceIndicator({ label, exists }) {
   return (
-    <Badge
-      variant="outline"
-      className={
-        completed
-          ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-400"
-          : "border-cyan-500/20 bg-cyan-500/10 text-cyan-400"
-      }
-    >
-      {completed ? (
-        <CheckCircle2 className="mr-1.5 h-3 w-3" />
-      ) : (
-        <Clock3 className="mr-1.5 h-3 w-3" />
-      )}
-
-      {status?.replaceAll("_", " ") || "UNKNOWN"}
-    </Badge>
-  );
-}
-
-
-/* =========================================================
-   SYSTEM ICON
-========================================================= */
-
-function SystemIcon({ system }) {
-  if (system === "gateway") {
-    return <Server className="h-5 w-5" />;
-  }
-
-  if (system === "bank") {
-    return <Database className="h-5 w-5" />;
-  }
-
-  return <GitCompare className="h-5 w-5" />;
-}
-
-
-/* =========================================================
-   SYSTEM NODE
-========================================================= */
-
-function SystemNode({
-  name,
-  system,
-  exists,
-  status,
-  amount,
-}) {
-  return (
-    <div className="flex flex-1 items-center gap-4 rounded-2xl border border-white/[0.07] bg-white/[0.025] p-5">
-
+    <div className="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
       <div
-        className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
+        className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg ${
           exists
-            ? "bg-emerald-500/10 text-emerald-400"
-            : "bg-red-500/10 text-red-400"
+            ? "bg-emerald-400/10"
+            : "bg-red-400/10"
         }`}
       >
-        <SystemIcon system={system} />
-      </div>
-
-      <div className="min-w-0 flex-1">
-
-        <div className="flex items-center justify-between gap-3">
-
-          <p className="text-sm font-medium text-white">
-            {name}
-          </p>
-
-          {exists ? (
-            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-          ) : (
-            <XCircle className="h-4 w-4 text-red-400" />
-          )}
-
-        </div>
-
-        <div className="mt-1 flex items-center gap-2">
-
-          <span
-            className={`text-xs ${
-              exists
-                ? "text-emerald-400"
-                : "text-red-400"
-            }`}
-          >
-            {exists ? status || "PRESENT" : "MISSING"}
-          </span>
-
-          {amount !== undefined && (
-            <>
-              <span className="text-slate-700">
-                •
-              </span>
-
-              <span className="text-xs text-slate-500">
-                ₹{Number(amount).toLocaleString()}
-              </span>
-            </>
-          )}
-
-        </div>
-
-      </div>
-
-    </div>
-  );
-}
-
-
-/* =========================================================
-   PIPELINE CONNECTOR
-========================================================= */
-
-function PipelineConnector({ active = false }) {
-  return (
-    <div className="hidden w-12 items-center justify-center lg:flex">
-
-      <div className="relative h-px w-full bg-white/[0.08]">
-
-        {active && (
-          <motion.div
-            initial={{ left: "0%" }}
-            animate={{ left: "100%" }}
-            transition={{
-              duration: 1.5,
-              repeat: Infinity,
-              ease: "linear",
-            }}
-            className="absolute top-1/2 h-1.5 w-1.5 -translate-y-1/2 rounded-full bg-cyan-400 shadow-[0_0_10px_rgba(34,211,238,0.8)]"
-          />
+        {exists ? (
+          <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+        ) : (
+          <XCircle className="h-4 w-4 text-red-400" />
         )}
-
       </div>
 
+      <div>
+        <div className="text-xs font-medium text-slate-300">
+          {label}
+        </div>
+
+        <div
+          className={`mt-1 text-[9px] font-semibold ${
+            exists
+              ? "text-emerald-400"
+              : "text-red-400"
+          }`}
+        >
+          {exists ? "EVIDENCE FOUND" : "MISSING"}
+        </div>
+      </div>
     </div>
   );
 }
-
-
-/* =========================================================
-   EVIDENCE ROW
-========================================================= */
 
 function EvidenceRow({
-  title,
-  value,
+  label,
   exists,
+  records,
+  last,
 }) {
-  const [open, setOpen] = useState(false);
-
   return (
-    <div className="border-b border-white/[0.05] last:border-0">
-
-      <button
-        onClick={() => setOpen(!open)}
-        className="flex w-full items-center justify-between gap-4 px-5 py-4 text-left transition-colors hover:bg-white/[0.02]"
-      >
-
-        <div className="flex items-center gap-3">
-
-          {exists ? (
-            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-          ) : (
-            <XCircle className="h-4 w-4 text-red-400" />
-          )}
-
-          <span className="text-sm text-slate-300">
-            {title}
-          </span>
-
-        </div>
-
-        <ChevronDown
-          className={`h-4 w-4 text-slate-600 transition-transform ${
-            open ? "rotate-180" : ""
-          }`}
-        />
-
-      </button>
-
-      {open && value && (
-        <div className="px-5 pb-5">
-
-          <pre className="max-h-80 overflow-auto rounded-xl border border-white/[0.05] bg-black/20 p-4 text-xs leading-6 text-slate-400">
-            {JSON.stringify(value, null, 2)}
-          </pre>
-
-        </div>
-      )}
-
-    </div>
-  );
-}
-
-
-/* =========================================================
-   SCORE RING
-========================================================= */
-
-function ScoreRing({ score }) {
-  const radius = 52;
-  const circumference = 2 * Math.PI * radius;
-
-  const offset =
-    circumference -
-    (score / 100) * circumference;
-
-  return (
-    <div className="relative h-36 w-36">
-
-      <svg
-        className="h-full w-full -rotate-90"
-        viewBox="0 0 120 120"
-      >
-
-        <circle
-          cx="60"
-          cy="60"
-          r={radius}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="8"
-          className="text-white/[0.06]"
-        />
-
-        <motion.circle
-          cx="60"
-          cy="60"
-          r={radius}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="8"
-          strokeLinecap="round"
-          className="text-cyan-400"
-          initial={{
-            strokeDashoffset: circumference,
-          }}
-          animate={{
-            strokeDashoffset: offset,
-          }}
-          transition={{
-            duration: 1.2,
-            ease: "easeOut",
-          }}
-          strokeDasharray={circumference}
-        />
-
-      </svg>
-
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
-
-        <span className="text-3xl font-semibold text-white">
-          {score}
-        </span>
-
-        <span className="text-[10px] uppercase tracking-wider text-slate-500">
-          Evidence
-        </span>
-
+    <div
+      className={`flex items-center justify-between px-4 py-3.5 ${
+        !last ? "border-b border-white/[0.05]" : ""
+      }`}
+    >
+      <div className="text-xs font-medium text-slate-400">
+        {label}
       </div>
 
+      <div className="flex items-center gap-4">
+        <span className="font-mono text-[9px] text-slate-600">
+          {records ?? 0} record
+          {records === 1 ? "" : "s"}
+        </span>
+
+        <span
+          className={`rounded-md px-2 py-1 text-[9px] font-semibold ${
+            exists
+              ? "bg-emerald-400/10 text-emerald-400"
+              : "bg-red-400/10 text-red-400"
+          }`}
+        >
+          {exists ? "AVAILABLE" : "MISSING"}
+        </span>
+      </div>
     </div>
   );
 }
 
-
-/* =========================================================
-   MAIN COMPONENT
-========================================================= */
+/* -------------------------------------------------------------------------- */
+/* Main Page                                                                   */
+/* -------------------------------------------------------------------------- */
 
 export default function InvestigationDetails() {
-  const { id } = useParams();
   const navigate = useNavigate();
+  const { id } = useParams();
 
+  const [investigation, setInvestigation] = useState(null);
+  const [messages, setMessages] = useState([]);
 
-  /* Investigation state */
-  const [investigation, setInvestigation] =
-    useState(null);
+  const [loading, setLoading] = useState(true);
+  const [chatLoading, setChatLoading] = useState(false);
 
-  const [loading, setLoading] =
-    useState(true);
+  const [chatInput, setChatInput] = useState("");
+  const [error, setError] = useState("");
 
-  const [error, setError] =
-    useState("");
+  async function loadInvestigation() {
+    try {
+      setLoading(true);
+      setError("");
 
+      const response = await getInvestigation(id);
 
-  /* Chat state */
-  const [messages, setMessages] =
-    useState([]);
-
-  const [messageInput, setMessageInput] =
-    useState("");
-
-  const [chatLoading, setChatLoading] =
-    useState(false);
-
-  const [chatError, setChatError] =
-    useState("");
-
-
-  /* =======================================================
-     LOAD INVESTIGATION
-  ======================================================= */
-
-  useEffect(() => {
-    async function loadInvestigation() {
-      try {
-        setLoading(true);
-        setError("");
-
-        const response =
-          await getInvestigation(id);
-
-        if (!response.success) {
-          throw new Error(
-            response.error?.message ||
-              "Unable to load investigation."
-          );
-        }
-
-        setInvestigation(response.data);
-
-
-        /* Load chat history */
-        try {
-          const chatResponse =
-            await getInvestigationMessages(id);
-
-          if (chatResponse.success) {
-            setMessages(
-              Array.isArray(chatResponse.data)
-                ? chatResponse.data
-                : chatResponse.data?.messages || []
-            );
-          }
-        } catch (chatErr) {
-          console.error(
-            "Chat history error:",
-            chatErr
-          );
-        }
-
-      } catch (err) {
-        console.error(
-          "Investigation error:",
-          err
-        );
-
-        setError(
-          err.response?.data?.error?.message ||
-            err.message ||
+      if (!response.success) {
+        throw new Error(
+          response.error?.message ||
             "Unable to load investigation."
         );
-      } finally {
-        setLoading(false);
       }
-    }
 
-    if (id) {
-      loadInvestigation();
+      setInvestigation(
+        response.data?.investigation ||
+          response.data
+      );
+    } catch (err) {
+      setError(
+        err?.response?.data?.error?.message ||
+          err?.message ||
+          "Unable to load investigation."
+      );
+    } finally {
+      setLoading(false);
     }
+  }
+
+  async function loadMessages() {
+    try {
+      const response =
+        await getInvestigationMessages(id);
+
+      if (response.success) {
+        setMessages(
+          response.data?.messages ||
+            response.data ||
+            []
+        );
+      }
+    } catch (err) {
+      console.error(
+        "Unable to load chat history:",
+        err
+      );
+    }
+  }
+
+  useEffect(() => {
+    loadInvestigation();
+    loadMessages();
   }, [id]);
-
-
-  /* =======================================================
-     SEND CHAT MESSAGE
-  ======================================================= */
 
   async function handleSendMessage(event) {
     event.preventDefault();
 
-    const content =
-      messageInput.trim();
+    const content = chatInput.trim();
 
-    if (
-      !content ||
-      chatLoading ||
-      !investigation
-    ) {
+    if (!content || !investigation) {
       return;
     }
 
     try {
       setChatLoading(true);
-      setChatError("");
 
       const response =
         await sendInvestigationMessage(
@@ -474,38 +526,13 @@ export default function InvestigationDetails() {
         );
       }
 
-      setMessageInput("");
+      setChatInput("");
 
-
-      /*
-       * Refresh the chat history after
-       * every successful message.
-       *
-       * This is safer than assuming the
-       * exact POST response structure.
-       */
-      const chatResponse =
-        await getInvestigationMessages(
-          investigation.investigationId
-        );
-
-      if (chatResponse.success) {
-        setMessages(
-          Array.isArray(chatResponse.data)
-            ? chatResponse.data
-            : chatResponse.data?.messages || []
-        );
-      }
-
+      await loadMessages();
     } catch (err) {
-      console.error(
-        "Send chat message error:",
-        err
-      );
-
-      setChatError(
-        err.response?.data?.error?.message ||
-          err.message ||
+      setError(
+        err?.response?.data?.error?.message ||
+          err?.message ||
           "Unable to send message."
       );
     } finally {
@@ -513,96 +540,63 @@ export default function InvestigationDetails() {
     }
   }
 
-
-  /* =======================================================
-     LOADING
-  ======================================================= */
+  function handleSuggestedQuestion(question) {
+    setChatInput(question);
+  }
 
   if (loading) {
     return (
-      <PageTransition>
+      <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center">
+        <div className="flex items-center gap-3 text-slate-500">
+          <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />
 
-        <div className="flex min-h-[70vh] items-center justify-center">
+          <span className="text-sm">
+            Loading investigation...
+          </span>
+        </div>
+      </div>
+    );
+  }
 
-          <div className="flex items-center gap-3 text-slate-400">
+  if (error && !investigation) {
+    return (
+      <div className="mx-auto max-w-3xl px-6 py-12">
+        <button
+          onClick={() => navigate(-1)}
+          className="mb-6 flex items-center gap-2 text-sm text-slate-500 transition hover:text-white"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back
+        </button>
 
-            <Loader2 className="h-4 w-4 animate-spin text-cyan-400" />
-
-            <span className="text-sm">
-              Loading investigation...
-            </span>
-
+        <div className="rounded-xl border border-red-400/15 bg-red-400/[0.04] p-6">
+          <div className="text-sm font-semibold text-red-300">
+            Unable to load investigation
           </div>
 
+          <p className="mt-2 text-xs text-slate-500">
+            {error}
+          </p>
         </div>
-
-      </PageTransition>
+      </div>
     );
   }
 
-
-  /* =======================================================
-     ERROR
-  ======================================================= */
-
-  if (error || !investigation) {
-    return (
-      <PageTransition>
-
-        <div className="flex min-h-[70vh] items-center justify-center">
-
-          <Card className="border-red-500/20 bg-red-500/5">
-
-            <CardContent className="p-8 text-center">
-
-              <CircleAlert className="mx-auto mb-4 h-8 w-8 text-red-400" />
-
-              <h2 className="text-lg font-medium text-white">
-                Investigation unavailable
-              </h2>
-
-              <p className="mt-2 text-sm text-red-300">
-                {error ||
-                  "Investigation was not found."}
-              </p>
-
-              <Button
-                variant="outline"
-                className="mt-5 border-white/[0.08]"
-                onClick={() =>
-                  navigate("/dashboard")
-                }
-              >
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Dashboard
-              </Button>
-
-            </CardContent>
-
-          </Card>
-
-        </div>
-
-      </PageTransition>
-    );
+  if (!investigation) {
+    return null;
   }
 
-
-  /* =======================================================
-     DATA NORMALIZATION
-  ======================================================= */
-
-  const snapshot =
+  const evidence =
     investigation.evidenceSnapshot || {};
 
   const gateway =
-    snapshot.gateway?.records?.[0];
+    evidence.gateway?.records?.[0];
 
   const bank =
-    snapshot.bank?.records?.[0];
+    evidence.bank?.records?.[0];
 
   const ledger =
-    snapshot.ledger?.records?.[0];
+    evidence.ledger?.records?.[0];
 
   const reconciliation =
     investigation.reconciliation || {};
@@ -619,1055 +613,804 @@ export default function InvestigationDetails() {
   const support =
     ai.support || {};
 
-  const evidenceScore =
-    investigation.evidenceScore || 0;
+  const anomalyList =
+    investigation.anomalies ||
+    reconciliation.findings ||
+    [];
 
+  const finding =
+    investigation.overallFinding ||
+    reconciliation.overallFinding ||
+    "UNKNOWN";
 
-  /* =======================================================
-     RENDER
-  ======================================================= */
+  const severity =
+    investigation.severity ||
+    reconciliation.severity ||
+    "UNKNOWN";
+
+  const severityColor =
+    severity === "CRITICAL"
+      ? "text-red-400"
+      : severity === "HIGH"
+        ? "text-orange-400"
+        : severity === "MEDIUM"
+          ? "text-amber-400"
+          : "text-emerald-400";
+
+  const suggestedQuestions = [
+    "Why is this transaction pending?",
+    "What caused the reconciliation issue?",
+    "What should the support team do next?",
+  ];
 
   return (
-    <PageTransition>
+    <div className="min-h-[calc(100vh-4rem)]">
+      <div className="mx-auto max-w-[1380px] px-5 py-6 sm:px-6 lg:px-8 lg:py-8">
+        {/* ---------------------------------------------------------------- */}
+        {/* Header                                                           */}
+        {/* ---------------------------------------------------------------- */}
 
-      <div className="mx-auto w-full max-w-[1600px] space-y-6 p-4 md:p-6 lg:p-8">
+        <motion.div
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="mb-7"
+        >
+          <div className="mb-5 flex items-center justify-between">
+            <button
+              onClick={() => navigate(-1)}
+              className="flex items-center gap-2 text-xs text-slate-500 transition hover:text-white"
+            >
+              <ArrowLeft className="h-4 w-4" />
+              Back to investigations
+            </button>
 
-
-        {/* ================================================= */}
-        {/* HEADER */}
-        {/* ================================================= */}
-
-        <div className="flex flex-col gap-5">
-
-          <Button
-            variant="ghost"
-            className="w-fit px-0 text-slate-500 hover:bg-transparent hover:text-white"
-            onClick={() =>
-              navigate("/dashboard")
-            }
-          >
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            Back to Dashboard
-          </Button>
-
-
-          <div className="flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
-
-            <div>
-
-              <div className="mb-3 flex items-center gap-2">
-
-                <span className="font-mono text-xs uppercase tracking-[0.18em] text-cyan-400">
-                  Investigation
-                </span>
-
-                <span className="text-slate-700">
-                  /
-                </span>
-
-                <span className="font-mono text-xs text-slate-500">
-                  {investigation.investigationId}
-                </span>
-
-              </div>
-
-              <h1 className="font-mono text-2xl font-semibold tracking-tight text-white md:text-3xl">
-                {investigation.transactionId}
-              </h1>
-
-              <p className="mt-2 text-sm text-slate-500">
-                Payment transaction investigation and reconciliation
-              </p>
-
-            </div>
-
-
-            <div className="flex flex-wrap items-center gap-3">
-
-              <StatusBadge
-                status={investigation.status}
-              />
-
-              <SeverityBadge
-                severity={investigation.severity}
-              />
-
-            </div>
-
+            <span className="hidden font-mono text-[9px] tracking-[0.2em] text-slate-700 sm:block">
+              INVESTIGATION CONSOLE
+            </span>
           </div>
 
-        </div>
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <div className="flex flex-wrap items-center gap-3">
+                <h1 className="font-mono text-2xl font-semibold tracking-tight text-white sm:text-[26px]">
+                  {investigation.transactionId}
+                </h1>
 
+                <span
+                  className={`rounded-md border border-white/[0.07] bg-white/[0.03] px-2.5 py-1 text-[9px] font-semibold tracking-wider ${severityColor}`}
+                >
+                  {severity} SEVERITY
+                </span>
+              </div>
 
-        {/* ================================================= */}
-        {/* OVERVIEW */}
-        {/* ================================================= */}
-
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-
-          <Card className="border-white/[0.07] bg-white/[0.025]">
-            <CardContent className="p-5">
-
-              <p className="text-xs text-slate-500">
-                Transaction
-              </p>
-
-              <p className="mt-2 font-mono text-sm text-white">
-                {investigation.transactionId}
-              </p>
-
-            </CardContent>
-          </Card>
-
-
-          <Card className="border-white/[0.07] bg-white/[0.025]">
-            <CardContent className="p-5">
-
-              <p className="text-xs text-slate-500">
-                Evidence Score
-              </p>
-
-              <p className="mt-2 text-2xl font-semibold text-white">
-                {evidenceScore}
-                <span className="text-sm text-slate-500">
-                  /100
+              <p className="mt-2 text-xs text-slate-500">
+                Investigation{" "}
+                <span className="font-mono text-slate-400">
+                  {investigation.investigationId}
                 </span>
               </p>
+            </div>
 
-            </CardContent>
-          </Card>
+            <button
+              onClick={() =>
+                generateInvestigationReport(
+                  investigation
+                )
+              }
+              className="flex w-fit items-center gap-2 rounded-lg border border-white/10 bg-white/[0.04] px-4 py-2.5 text-xs font-medium text-slate-300 transition hover:border-cyan-400/20 hover:bg-cyan-400/[0.06] hover:text-cyan-300"
+            >
+              <Download className="h-4 w-4" />
+              Download Report
+            </button>
+          </div>
+        </motion.div>
 
+        {/* ---------------------------------------------------------------- */}
+        {/* Error                                                            */}
+        {/* ---------------------------------------------------------------- */}
 
-          <Card className="border-white/[0.07] bg-white/[0.025]">
-            <CardContent className="p-5">
+        {error && (
+          <div className="mb-5 rounded-xl border border-red-400/10 bg-red-400/[0.03] px-4 py-3 text-xs text-red-300">
+            {error}
+          </div>
+        )}
 
-              <p className="text-xs text-slate-500">
-                Finding
+        {/* ---------------------------------------------------------------- */}
+        {/* Overview Stats                                                   */}
+        {/* ---------------------------------------------------------------- */}
+
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.06 }}
+          className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4"
+        >
+          <StatCard
+            label="Evidence Score"
+            value={`${investigation.evidenceScore ?? 0}%`}
+            icon={ShieldAlert}
+            accent="cyan"
+          />
+
+          <StatCard
+            label="Overall Finding"
+            value={finding}
+            icon={GitCompare}
+            accent={
+              finding === "SUCCESS"
+                ? "green"
+                : "amber"
+            }
+          />
+
+          <StatCard
+            label="Investigation Status"
+            value={
+              investigation.status || "UNKNOWN"
+            }
+            icon={Zap}
+            accent="cyan"
+          />
+
+          <StatCard
+            label="AI Confidence"
+            value={
+              rootCause.confidence != null
+                ? `${rootCause.confidence}%`
+                : "N/A"
+            }
+            icon={Bot}
+            accent="green"
+          />
+        </motion.div>
+
+        {/* ---------------------------------------------------------------- */}
+        {/* Payment Pipeline                                                  */}
+        {/* ---------------------------------------------------------------- */}
+
+        <motion.section
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.1 }}
+          className="mb-6 rounded-2xl border border-white/[0.07] bg-[#090c10] p-5 sm:p-6 lg:p-7"
+        >
+          <div className="mb-6 flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-semibold text-white">
+                Payment Pipeline
+              </h2>
+
+              <p className="mt-1.5 text-xs text-slate-500">
+                Evidence status across connected systems.
               </p>
+            </div>
 
-              <p className="mt-2 text-sm font-medium text-orange-400">
-                {(investigation.overallFinding ||
-                  "UNKNOWN"
-                ).replaceAll("_", " ")}
-              </p>
+            <span className="hidden rounded-md border border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5 font-mono text-[8px] tracking-wider text-slate-700 sm:block">
+              TRACE / RECONCILE / EXPLAIN
+            </span>
+          </div>
 
-            </CardContent>
-          </Card>
+          <div className="grid gap-3 md:grid-cols-3">
+            <PipelineCard
+              name="Gateway"
+              status={gateway?.status || "MISSING"}
+              reference={
+                gateway?.gatewayReference
+              }
+              icon={Server}
+            />
 
+            <PipelineCard
+              name="Bank"
+              status={bank?.status || "MISSING"}
+              reference={bank?.bankReference}
+              icon={Database}
+            />
 
-          <Card className="border-white/[0.07] bg-white/[0.025]">
-            <CardContent className="p-5">
+            <PipelineCard
+              name="Ledger"
+              status={ledger?.status || "MISSING"}
+              reference={
+                ledger?.ledgerReference
+              }
+              icon={GitCompare}
+            />
+          </div>
+        </motion.section>
 
-              <p className="text-xs text-slate-500">
-                Status
-              </p>
+        {/* ---------------------------------------------------------------- */}
+        {/* Timeline                                                          */}
+        {/* ---------------------------------------------------------------- */}
 
-              <p className="mt-2 text-sm font-medium text-emerald-400">
-                {investigation.status?.replaceAll(
-                  "_",
-                  " "
-                )}
-              </p>
+        <motion.div
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.14 }}
+          className="mb-6"
+        >
+          <TransactionTimeline
+            investigation={investigation}
+          />
+        </motion.div>
 
-            </CardContent>
-          </Card>
+        {/* ---------------------------------------------------------------- */}
+        {/* Main Grid                                                         */}
+        {/* ---------------------------------------------------------------- */}
 
-        </div>
-
-
-        {/* ================================================= */}
-        {/* PIPELINE */}
-        {/* ================================================= */}
-
-        <Card className="border-white/[0.07] bg-white/[0.025] backdrop-blur-xl">
-
-          <CardHeader>
-
-            <div className="flex items-center justify-between">
-
-              <div>
-
-                <CardTitle className="flex items-center gap-2 text-base text-white">
+        <div className="grid gap-6 xl:grid-cols-[minmax(0,1fr)_390px]">
+          {/* Left */}
+          <div className="min-w-0 space-y-6">
+            {/* Reconciliation */}
+            <motion.section
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.18 }}
+              className="rounded-2xl border border-white/[0.07] bg-[#090c10] p-5 sm:p-6 lg:p-7"
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-cyan-400/10 bg-cyan-400/[0.06]">
                   <GitCompare className="h-4 w-4 text-cyan-400" />
-                  Transaction Pipeline
-                </CardTitle>
-
-                <p className="mt-1 text-xs text-slate-500">
-                  Cross-system evidence trace
-                </p>
-
-              </div>
-
-              <div className="hidden items-center gap-2 text-xs text-slate-500 sm:flex">
-
-                <div className="h-2 w-2 animate-pulse rounded-full bg-cyan-400" />
-
-                Live evidence
-
-              </div>
-
-            </div>
-
-          </CardHeader>
-
-
-          <CardContent>
-
-            <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
-
-              <SystemNode
-                name="Payment Gateway"
-                system="gateway"
-                exists={
-                  snapshot.gateway?.exists
-                }
-                status={gateway?.status}
-                amount={gateway?.amount}
-              />
-
-              <PipelineConnector active />
-
-              <SystemNode
-                name="Bank"
-                system="bank"
-                exists={
-                  snapshot.bank?.exists
-                }
-                status={bank?.status}
-                amount={bank?.amount}
-              />
-
-              <PipelineConnector active />
-
-              <SystemNode
-                name="Ledger"
-                system="ledger"
-                exists={
-                  snapshot.ledger?.exists
-                }
-                status={ledger?.status}
-                amount={ledger?.amount}
-              />
-
-            </div>
-
-          </CardContent>
-
-        </Card>
-
-
-        {/* ================================================= */}
-        {/* RECONCILIATION + SCORE */}
-        {/* ================================================= */}
-
-        <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
-
-
-          {/* Reconciliation */}
-
-          <Card className="border-white/[0.07] bg-white/[0.025]">
-
-            <CardHeader>
-
-              <CardTitle className="flex items-center gap-2 text-base text-white">
-                <ShieldAlert className="h-4 w-4 text-orange-400" />
-                Reconciliation
-              </CardTitle>
-
-            </CardHeader>
-
-
-            <CardContent>
-
-              <div className="rounded-2xl border border-orange-500/10 bg-orange-500/[0.03] p-5">
-
-                <div className="flex flex-col justify-between gap-4 sm:flex-row sm:items-start">
-
-                  <div>
-
-                    <p className="text-xs uppercase tracking-wider text-slate-500">
-                      Overall finding
-                    </p>
-
-                    <p className="mt-2 text-xl font-semibold text-orange-400">
-                      {(
-                        reconciliation.overallFinding ||
-                        investigation.overallFinding ||
-                        "UNKNOWN"
-                      ).replaceAll("_", " ")}
-                    </p>
-
-                  </div>
-
-                  <SeverityBadge
-                    severity={
-                      reconciliation.severity ||
-                      investigation.severity
-                    }
-                  />
-
                 </div>
 
+                <div>
+                  <h2 className="text-sm font-semibold text-white">
+                    Reconciliation
+                  </h2>
 
-                <div className="mt-5 grid gap-3 sm:grid-cols-3">
-
-                  <div className="rounded-xl border border-white/[0.05] bg-black/10 p-4">
-
-                    <p className="text-[11px] text-slate-500">
-                      Gateway
-                    </p>
-
-                    <p className="mt-1 text-sm font-medium text-emerald-400">
-                      {reconciliation.summary?.gatewayExists
-                        ? "Present"
-                        : "Missing"}
-                    </p>
-
-                  </div>
-
-
-                  <div className="rounded-xl border border-white/[0.05] bg-black/10 p-4">
-
-                    <p className="text-[11px] text-slate-500">
-                      Bank
-                    </p>
-
-                    <p className="mt-1 text-sm font-medium text-emerald-400">
-                      {reconciliation.summary?.bankExists
-                        ? "Present"
-                        : "Missing"}
-                    </p>
-
-                  </div>
-
-
-                  <div className="rounded-xl border border-white/[0.05] bg-black/10 p-4">
-
-                    <p className="text-[11px] text-slate-500">
-                      Ledger
-                    </p>
-
-                    <p
-                      className={`mt-1 text-sm font-medium ${
-                        reconciliation.summary?.ledgerExists
-                          ? "text-emerald-400"
-                          : "text-red-400"
-                      }`}
-                    >
-                      {reconciliation.summary?.ledgerExists
-                        ? "Present"
-                        : "Missing"}
-                    </p>
-
-                  </div>
-
+                  <p className="mt-1 text-xs text-slate-500">
+                    Deterministic comparison of payment evidence.
+                  </p>
                 </div>
-
               </div>
 
+              <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                <EvidenceIndicator
+                  label="Gateway"
+                  exists={
+                    reconciliation.summary
+                      ?.gatewayExists ??
+                    evidence.gateway?.exists
+                  }
+                />
 
-              {reconciliation.findings?.length >
-                0 && (
-                <div className="mt-4 space-y-2">
+                <EvidenceIndicator
+                  label="Bank"
+                  exists={
+                    reconciliation.summary
+                      ?.bankExists ??
+                    evidence.bank?.exists
+                  }
+                />
 
-                  {reconciliation.findings.map(
-                    (finding, index) => (
+                <EvidenceIndicator
+                  label="Ledger"
+                  exists={
+                    reconciliation.summary
+                      ?.ledgerExists ??
+                    evidence.ledger?.exists
+                  }
+                />
+              </div>
+
+              {anomalyList.length > 0 && (
+                <div className="mt-6 space-y-2.5">
+                  {anomalyList.map(
+                    (anomaly, index) => (
                       <div
-                        key={`${finding.code}-${index}`}
-                        className="flex gap-3 rounded-xl border border-white/[0.05] bg-white/[0.02] p-4"
+                        key={`${anomaly.code}-${index}`}
+                        className="flex gap-3 rounded-xl border border-red-400/10 bg-red-400/[0.03] p-4"
                       >
-
-                        <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-orange-400" />
+                        <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
 
                         <div>
-
-                          <div className="flex flex-wrap items-center gap-2">
-
-                            <span className="font-mono text-xs text-orange-300">
-                              {finding.code}
-                            </span>
-
-                            <SeverityBadge
-                              severity={
-                                finding.severity
-                              }
-                            />
-
+                          <div className="text-xs font-semibold text-red-300">
+                            {anomaly.code ||
+                              "RECONCILIATION ISSUE"}
                           </div>
 
-                          <p className="mt-1 text-sm text-slate-400">
-                            {finding.message}
+                          <p className="mt-1.5 text-xs leading-5 text-slate-500">
+                            {anomaly.message}
                           </p>
-
                         </div>
-
                       </div>
                     )
                   )}
-
                 </div>
               )}
+            </motion.section>
 
-            </CardContent>
-
-          </Card>
-
-
-          {/* Evidence score */}
-
-          <Card className="border-white/[0.07] bg-white/[0.025]">
-
-            <CardHeader>
-
-              <CardTitle className="text-base text-white">
-                Evidence Confidence
-              </CardTitle>
-
-            </CardHeader>
-
-
-            <CardContent>
-
-              <div className="flex flex-col items-center">
-
-                <ScoreRing
-                  score={evidenceScore}
-                />
-
-                <p className="mt-4 max-w-xs text-center text-sm text-slate-400">
-                  Confidence based on the availability and consistency of transaction evidence.
-                </p>
-
-
-                <div className="mt-5 grid w-full grid-cols-3 gap-2 text-center">
-
-                  <div>
-                    <p className="text-lg font-semibold text-emerald-400">
-                      {snapshot.gateway?.exists
-                        ? "✓"
-                        : "×"}
-                    </p>
-
-                    <p className="text-[10px] text-slate-600">
-                      Gateway
-                    </p>
-                  </div>
-
-
-                  <div>
-                    <p className="text-lg font-semibold text-emerald-400">
-                      {snapshot.bank?.exists
-                        ? "✓"
-                        : "×"}
-                    </p>
-
-                    <p className="text-[10px] text-slate-600">
-                      Bank
-                    </p>
-                  </div>
-
-
-                  <div>
-                    <p
-                      className={`text-lg font-semibold ${
-                        snapshot.ledger?.exists
-                          ? "text-emerald-400"
-                          : "text-red-400"
-                      }`}
-                    >
-                      {snapshot.ledger?.exists
-                        ? "✓"
-                        : "×"}
-                    </p>
-
-                    <p className="text-[10px] text-slate-600">
-                      Ledger
-                    </p>
-                  </div>
-
+            {/* AI Root Cause */}
+            <motion.section
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.22 }}
+              className="rounded-2xl border border-cyan-400/10 bg-cyan-400/[0.025] p-5 sm:p-6 lg:p-7"
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-cyan-400/10 bg-cyan-400/10">
+                  <Sparkles className="h-4 w-4 text-cyan-400" />
                 </div>
 
-              </div>
+                <div>
+                  <h2 className="text-sm font-semibold text-white">
+                    AI Root Cause
+                  </h2>
 
-            </CardContent>
+                  <p className="mt-1 text-[10px] text-slate-600">
+                    Evidence-backed explanation
+                  </p>
+                </div>
 
-          </Card>
-
-        </div>
-
-
-        {/* ================================================= */}
-        {/* AI ANALYSIS */}
-        {/* ================================================= */}
-
-        <div className="grid gap-6 lg:grid-cols-2">
-
-
-          {/* Root Cause */}
-
-          <Card className="border-cyan-500/10 bg-cyan-500/[0.02]">
-
-            <CardHeader>
-
-              <CardTitle className="flex items-center gap-2 text-base text-white">
-                <Bot className="h-4 w-4 text-cyan-400" />
-                AI Root Cause
-              </CardTitle>
-
-            </CardHeader>
-
-
-            <CardContent>
-
-              <div className="rounded-xl border border-cyan-500/10 bg-black/10 p-5">
-
-                <p className="text-sm leading-6 text-slate-300">
-                  {rootCause.rootCause ||
-                    "No root cause analysis available."}
-                </p>
-
-
-                {rootCause.confidence !==
-                  undefined && (
-                  <div className="mt-5">
-
-                    <div className="mb-2 flex justify-between text-xs">
-
-                      <span className="text-slate-500">
-                        AI confidence
-                      </span>
-
-                      <span className="text-cyan-400">
-                        {rootCause.confidence}%
-                      </span>
-
-                    </div>
-
-
-                    <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
-
-                      <motion.div
-                        initial={{ width: 0 }}
-                        animate={{
-                          width: `${rootCause.confidence}%`,
-                        }}
-                        transition={{
-                          duration: 0.8,
-                        }}
-                        className="h-full rounded-full bg-cyan-400"
-                      />
-
-                    </div>
-
+                {rootCause.confidence != null && (
+                  <div className="ml-auto rounded-md border border-cyan-400/10 bg-cyan-400/[0.05] px-2.5 py-1.5 text-[10px] font-semibold text-cyan-300">
+                    {rootCause.confidence}% confidence
                   </div>
                 )}
-
               </div>
 
+              <div className="mt-6 rounded-xl border border-white/[0.05] bg-black/10 p-4">
+                <div className="mb-2 text-[9px] font-semibold uppercase tracking-[0.15em] text-cyan-400">
+                  Root Cause
+                </div>
+
+                <p className="text-sm leading-7 text-slate-300">
+                  {rootCause.rootCause ||
+                    "No AI root cause analysis available."}
+                </p>
+              </div>
 
               {rootCause.supportingEvidence
                 ?.length > 0 && (
-                <div className="mt-4">
-
-                  <p className="mb-3 text-xs uppercase tracking-wider text-slate-600">
-                    Supporting evidence
-                  </p>
+                <div className="mt-6">
+                  <div className="mb-3 text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-600">
+                    Supporting Evidence
+                  </div>
 
                   <div className="space-y-2">
-
                     {rootCause.supportingEvidence.map(
-                      (evidence, index) => (
+                      (item, index) => (
                         <div
                           key={index}
-                          className="flex gap-3 text-xs leading-5 text-slate-400"
+                          className="flex gap-3 rounded-lg border border-white/[0.05] bg-black/10 p-3.5"
                         >
+                          <CheckCircle2 className="mt-0.5 h-3.5 w-3.5 shrink-0 text-emerald-400" />
 
-                          <span className="font-mono text-cyan-500">
-                            {String(
-                              index + 1
-                            ).padStart(2, "0")}
+                          <span className="text-xs leading-5 text-slate-500">
+                            {item}
                           </span>
-
-                          <span>
-                            {evidence}
-                          </span>
-
                         </div>
                       )
                     )}
-
                   </div>
-
                 </div>
               )}
 
-            </CardContent>
+              {rootCause.uncertainties
+                ?.length > 0 && (
+                <div className="mt-6 rounded-xl border border-amber-400/10 bg-amber-400/[0.025] p-4">
+                  <div className="mb-2 text-[10px] font-semibold uppercase tracking-[0.15em] text-amber-400">
+                    Uncertainties
+                  </div>
 
-          </Card>
+                  <div className="space-y-2">
+                    {rootCause.uncertainties.map(
+                      (item, index) => (
+                        <p
+                          key={index}
+                          className="text-xs leading-5 text-slate-500"
+                        >
+                          • {item}
+                        </p>
+                      )
+                    )}
+                  </div>
+                </div>
+              )}
+            </motion.section>
 
+            {/* Recommended Action */}
+            <motion.section
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.26 }}
+              className="rounded-2xl border border-white/[0.07] bg-[#090c10] p-5 sm:p-6 lg:p-7"
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-amber-400/10 bg-amber-400/[0.06]">
+                  <Zap className="h-4 w-4 text-amber-400" />
+                </div>
 
-          {/* Resolution */}
+                <div>
+                  <h2 className="text-sm font-semibold text-white">
+                    Recommended Action
+                  </h2>
 
-          <Card className="border-emerald-500/10 bg-emerald-500/[0.02]">
+                  <p className="mt-1 text-xs text-slate-500">
+                    Suggested next steps for the support team.
+                  </p>
+                </div>
+              </div>
 
-            <CardHeader>
-
-              <CardTitle className="flex items-center gap-2 text-base text-white">
-                <Zap className="h-4 w-4 text-emerald-400" />
-                Recommended Action
-              </CardTitle>
-
-            </CardHeader>
-
-
-            <CardContent>
-
-              <div className="rounded-xl border border-emerald-500/10 bg-black/10 p-5">
-
+              <div className="mt-6 rounded-xl border border-amber-400/10 bg-amber-400/[0.025] p-4.5">
                 <p className="text-sm leading-6 text-slate-300">
                   {resolution.recommendedAction ||
                     "No recommended action available."}
                 </p>
-
-
-                {resolution.priority && (
-                  <div className="mt-4">
-
-                    <SeverityBadge
-                      severity={
-                        resolution.priority
-                      }
-                    />
-
-                  </div>
-                )}
-
               </div>
 
-
               {resolution.steps?.length > 0 && (
-                <div className="mt-4 space-y-3">
-
+                <div className="mt-6 space-y-3">
                   {resolution.steps.map(
                     (step, index) => (
                       <div
                         key={index}
                         className="flex gap-3"
                       >
-
-                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-emerald-500/20 bg-emerald-500/10 text-[10px] text-emerald-400">
+                        <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md border border-white/[0.07] bg-white/[0.025] font-mono text-[9px] text-slate-500">
                           {index + 1}
                         </div>
 
-                        <p className="text-xs leading-5 text-slate-400">
+                        <p className="pt-1 text-xs leading-5 text-slate-500">
                           {step}
                         </p>
-
                       </div>
                     )
                   )}
-
                 </div>
               )}
 
-            </CardContent>
+              {resolution.escalationRequired && (
+                <div className="mt-6 flex gap-3 rounded-xl border border-red-400/10 bg-red-400/[0.03] p-4">
+                  <ShieldAlert className="h-4 w-4 shrink-0 text-red-400" />
 
-          </Card>
-
-        </div>
-
-
-        {/* ================================================= */}
-        {/* EVIDENCE DETAILS */}
-        {/* ================================================= */}
-
-        <Card className="border-white/[0.07] bg-white/[0.025]">
-
-          <CardHeader>
-
-            <CardTitle className="text-base text-white">
-              Evidence Details
-            </CardTitle>
-
-            <p className="text-xs text-slate-500">
-              Raw evidence collected from connected systems
-            </p>
-
-          </CardHeader>
-
-
-          <CardContent className="p-0">
-
-            <EvidenceRow
-              title="Gateway Record"
-              exists={
-                snapshot.gateway?.exists
-              }
-              value={gateway}
-            />
-
-            <EvidenceRow
-              title="Bank Record"
-              exists={
-                snapshot.bank?.exists
-              }
-              value={bank}
-            />
-
-            <EvidenceRow
-              title="Ledger Record"
-              exists={
-                snapshot.ledger?.exists
-              }
-              value={ledger}
-            />
-
-          </CardContent>
-
-        </Card>
-
-
-        {/* ================================================= */}
-        {/* SUPPORT SUMMARY */}
-        {/* ================================================= */}
-
-        {support.summary && (
-          <Card className="border-white/[0.07] bg-white/[0.025]">
-
-            <CardHeader>
-
-              <CardTitle className="text-base text-white">
-                Support Summary
-              </CardTitle>
-
-            </CardHeader>
-
-
-            <CardContent>
-
-              <div className="rounded-xl border border-white/[0.05] bg-white/[0.02] p-5">
-
-                <p className="text-sm leading-6 text-slate-300">
-                  {support.summary}
-                </p>
-
-
-                {resolution.escalationRequired && (
-                  <div className="mt-4 flex items-start gap-3 rounded-lg border border-orange-500/20 bg-orange-500/10 p-4">
-
-                    <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-orange-400" />
-
-                    <div>
-
-                      <p className="text-xs font-medium text-orange-300">
-                        Escalation required
-                      </p>
-
-                      {resolution.escalationReason && (
-                        <p className="mt-1 text-xs leading-5 text-slate-400">
-                          {resolution.escalationReason}
-                        </p>
-                      )}
-
+                  <div>
+                    <div className="text-xs font-semibold text-red-300">
+                      Escalation Required
                     </div>
 
+                    <p className="mt-1.5 text-xs leading-5 text-slate-500">
+                      {resolution.escalationReason ||
+                        "This investigation requires escalation."}
+                    </p>
+                  </div>
+                </div>
+              )}
+            </motion.section>
+
+            {/* Support Summary */}
+            <motion.section
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.3 }}
+              className="rounded-2xl border border-white/[0.07] bg-[#090c10] p-5 sm:p-6 lg:p-7"
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-cyan-400/10 bg-cyan-400/[0.06]">
+                  <MessageSquare className="h-4 w-4 text-cyan-400" />
+                </div>
+
+                <div>
+                  <h2 className="text-sm font-semibold text-white">
+                    Support Summary
+                  </h2>
+
+                  <p className="mt-1 text-xs text-slate-500">
+                    AI-generated communication material for support.
+                  </p>
+                </div>
+              </div>
+
+              <p className="mt-6 text-sm leading-7 text-slate-400">
+                {support.summary ||
+                  "No support summary available."}
+              </p>
+
+              {support.customerMessage && (
+                <div className="mt-6 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-600">
+                    Customer Message
+                  </div>
+
+                  <p className="mt-2.5 text-xs leading-6 text-slate-500">
+                    {support.customerMessage}
+                  </p>
+                </div>
+              )}
+
+              {support.internalNote && (
+                <div className="mt-3 rounded-xl border border-white/[0.06] bg-white/[0.02] p-4">
+                  <div className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-600">
+                    Internal Note
+                  </div>
+
+                  <p className="mt-2.5 text-xs leading-6 text-slate-500">
+                    {support.internalNote}
+                  </p>
+                </div>
+              )}
+            </motion.section>
+
+            {/* Evidence Details */}
+            <motion.section
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.34 }}
+              className="rounded-2xl border border-white/[0.07] bg-[#090c10] p-5 sm:p-6 lg:p-7"
+            >
+              <div className="flex items-start gap-3">
+                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-cyan-400/10 bg-cyan-400/[0.06]">
+                  <Database className="h-4 w-4 text-cyan-400" />
+                </div>
+
+                <div>
+                  <h2 className="text-sm font-semibold text-white">
+                    Evidence Details
+                  </h2>
+
+                  <p className="mt-1 text-xs text-slate-500">
+                    Availability of evidence collected from each system.
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 overflow-x-auto">
+                <div className="min-w-[600px] rounded-xl border border-white/[0.06]">
+                  <EvidenceRow
+                    label="Gateway"
+                    exists={evidence.gateway?.exists}
+                    records={
+                      evidence.gateway?.recordCount
+                    }
+                  />
+
+                  <EvidenceRow
+                    label="Bank"
+                    exists={evidence.bank?.exists}
+                    records={
+                      evidence.bank?.recordCount
+                    }
+                  />
+
+                  <EvidenceRow
+                    label="Ledger"
+                    exists={evidence.ledger?.exists}
+                    records={
+                      evidence.ledger?.recordCount
+                    }
+                    last
+                  />
+                </div>
+              </div>
+
+              <div className="mt-4 flex items-center gap-2 text-[9px] text-slate-700">
+                <Clock3 className="h-3 w-3" />
+                Collected at{" "}
+                {formatDate(
+                  evidence.collectedAt
+                )}
+              </div>
+            </motion.section>
+          </div>
+
+          {/* ---------------------------------------------------------------- */}
+          {/* Chat                                                              */}
+          {/* ---------------------------------------------------------------- */}
+
+          <motion.aside
+            initial={{ opacity: 0, x: 12 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ delay: 0.2 }}
+            className="xl:sticky xl:top-6 xl:h-[calc(100vh-7rem)]"
+          >
+            <div className="flex h-full min-h-[620px] flex-col overflow-hidden rounded-2xl border border-white/[0.07] bg-[#090c10]">
+              {/* Chat Header */}
+              <div className="border-b border-white/[0.06] px-5 py-4.5">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-cyan-400/10 bg-cyan-400/10">
+                    <Bot className="h-4 w-4 text-cyan-400" />
+                  </div>
+
+                  <div>
+                    <div className="text-sm font-semibold text-white">
+                      Ask LedgerLens
+                    </div>
+
+                    <div className="mt-1 flex items-center gap-1.5 text-[10px] text-emerald-400">
+                      <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
+                      Investigation-aware AI
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Messages */}
+              <div className="flex-1 space-y-5 overflow-y-auto p-5">
+                {messages.length === 0 && (
+                  <div className="flex min-h-[280px] flex-col items-center justify-center px-6 text-center">
+                    <div className="flex h-12 w-12 items-center justify-center rounded-xl border border-white/[0.06] bg-white/[0.025]">
+                      <Bot className="h-5 w-5 text-slate-700" />
+                    </div>
+
+                    <p className="mt-4 text-xs font-medium text-slate-500">
+                      Ask anything about this investigation.
+                    </p>
+
+                    <p className="mt-1.5 max-w-[230px] text-[10px] leading-5 text-slate-700">
+                      LedgerLens will answer using the investigation context and verified evidence.
+                    </p>
                   </div>
                 )}
 
-              </div>
-
-            </CardContent>
-
-          </Card>
-        )}
-
-
-        {/* ================================================= */}
-        {/* ASK LEDGERLENS */}
-        {/* ================================================= */}
-
-        <Card className="overflow-hidden border-cyan-500/10 bg-cyan-500/[0.02]">
-
-          <CardHeader className="border-b border-white/[0.05]">
-
-            <div className="flex items-center justify-between">
-
-              <div>
-
-                <CardTitle className="flex items-center gap-2 text-base text-white">
-                  <MessageSquare className="h-4 w-4 text-cyan-400" />
-                  Ask LedgerLens
-                </CardTitle>
-
-                <p className="mt-1 text-xs text-slate-600">
-                  Ask follow-up questions about this investigation
-                </p>
-
-              </div>
-
-
-              <div className="flex items-center gap-2">
-
-                <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400" />
-
-                <span className="text-[10px] uppercase tracking-wider text-cyan-400">
-                  AI Ready
-                </span>
-
-              </div>
-
-            </div>
-
-          </CardHeader>
-
-
-          <CardContent className="p-0">
-
-
-            {/* Chat messages */}
-
-            <div className="max-h-[420px] min-h-[220px] space-y-4 overflow-y-auto p-5">
-
-              {messages.length === 0 && (
-                <div className="flex min-h-[180px] flex-col items-center justify-center text-center">
-
-                  <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-cyan-500/10 bg-cyan-500/[0.05]">
-
-                    <Bot className="h-5 w-5 text-cyan-400" />
-
-                  </div>
-
-                  <p className="mt-4 text-sm text-slate-400">
-                    Ask LedgerLens about this transaction.
-                  </p>
-
-                  <p className="mt-1 max-w-md text-xs leading-5 text-slate-600">
-                    Try asking why the transaction is pending,
-                    what caused the reconciliation issue, or what
-                    the support team should do next.
-                  </p>
-
-                </div>
-              )}
-
-
-              {messages.map(
-                (message, index) => {
-
+                {messages.map((message, index) => {
                   const isUser =
-                    message.role === "USER" ||
-                    message.role === "user";
+                    message.role === "USER";
 
                   return (
-                    <motion.div
+                    <div
                       key={
                         message._id ||
                         message.id ||
                         index
                       }
-                      initial={{
-                        opacity: 0,
-                        y: 8,
-                      }}
-                      animate={{
-                        opacity: 1,
-                        y: 0,
-                      }}
                       className={`flex gap-3 ${
                         isUser
-                          ? "justify-end"
-                          : "justify-start"
+                          ? "flex-row-reverse"
+                          : ""
                       }`}
                     >
-
-                      {!isUser && (
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-cyan-500/10 bg-cyan-500/[0.06]">
-
-                          <Bot className="h-4 w-4 text-cyan-400" />
-
-                        </div>
-                      )}
-
-
                       <div
-                        className={`max-w-[80%] rounded-2xl border px-4 py-3 ${
+                        className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${
                           isUser
-                            ? "border-white/[0.08] bg-white/[0.04]"
-                            : "border-cyan-500/10 bg-cyan-500/[0.03]"
+                            ? "bg-white/[0.06]"
+                            : "bg-cyan-400/10"
                         }`}
                       >
+                        {isUser ? (
+                          <UserRound className="h-3.5 w-3.5 text-slate-400" />
+                        ) : (
+                          <Bot className="h-3.5 w-3.5 text-cyan-400" />
+                        )}
+                      </div>
 
-                        <p className="whitespace-pre-wrap text-sm leading-6 text-slate-300">
+                      <div
+                        className={`max-w-[82%] rounded-xl px-3.5 py-3 ${
+                          isUser
+                            ? "bg-white/[0.06] text-slate-300"
+                            : "border border-white/[0.06] bg-white/[0.025] text-slate-400"
+                        }`}
+                      >
+                        <p className="whitespace-pre-wrap text-xs leading-5">
                           {message.content}
                         </p>
 
+                        {message.createdAt && (
+                          <p className="mt-2 text-[8px] text-slate-700">
+                            {formatDate(
+                              message.createdAt
+                            )}
+                          </p>
+                        )}
                       </div>
-
-
-                      {isUser && (
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-white/[0.06] bg-white/[0.03]">
-
-                          <UserRound className="h-4 w-4 text-slate-500" />
-
-                        </div>
-                      )}
-
-                    </motion.div>
+                    </div>
                   );
-                }
-              )}
+                })}
 
+                {chatLoading && (
+                  <div className="flex gap-3">
+                    <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-cyan-400/10">
+                      <Bot className="h-3.5 w-3.5 text-cyan-400" />
+                    </div>
 
-              {/* AI thinking */}
+                    <div className="rounded-xl border border-white/[0.06] bg-white/[0.025] px-4 py-3">
+                      <div className="flex items-center gap-1">
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-500" />
 
-              {chatLoading && (
-                <motion.div
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  className="flex items-center gap-3"
-                >
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-500 [animation-delay:120ms]" />
 
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-cyan-500/10 bg-cyan-500/[0.06]">
-
-                    <Bot className="h-4 w-4 text-cyan-400" />
-
+                        <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-slate-500 [animation-delay:240ms]" />
+                      </div>
+                    </div>
                   </div>
-
-
-                  <div className="flex items-center gap-1 rounded-2xl border border-cyan-500/10 bg-cyan-500/[0.03] px-4 py-3">
-
-                    <span className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-400" />
-
-                    <span
-                      className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-400"
-                      style={{
-                        animationDelay:
-                          "120ms",
-                      }}
-                    />
-
-                    <span
-                      className="h-1.5 w-1.5 animate-bounce rounded-full bg-cyan-400"
-                      style={{
-                        animationDelay:
-                          "240ms",
-                      }}
-                    />
-
-                  </div>
-
-                </motion.div>
-              )}
-
-            </div>
-
-
-            {/* Chat error */}
-
-            {chatError && (
-              <div className="mx-5 mb-3 rounded-xl border border-red-500/20 bg-red-500/[0.05] px-4 py-3 text-xs text-red-400">
-                {chatError}
-              </div>
-            )}
-
-
-            {/* Suggested questions */}
-
-            <div className="border-t border-white/[0.05] px-5 py-3">
-
-              <div className="flex flex-wrap gap-2">
-
-                {[
-                  "Why is this transaction pending?",
-                  "What caused the issue?",
-                  "What should support do next?",
-                ].map((question) => (
-                  <button
-                    key={question}
-                    type="button"
-                    disabled={chatLoading}
-                    onClick={() =>
-                      setMessageInput(
-                        question
-                      )
-                    }
-                    className="rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[10px] text-slate-500 transition-colors hover:border-cyan-500/20 hover:bg-cyan-500/[0.03] hover:text-cyan-400 disabled:opacity-40"
-                  >
-                    {question}
-                  </button>
-                ))}
-
+                )}
               </div>
 
-            </div>
+              {/* Suggested Questions */}
+              <div className="border-t border-white/[0.06] px-4 py-3.5">
+                <div className="mb-2.5 text-[9px] uppercase tracking-[0.15em] text-slate-700">
+                  Suggested questions
+                </div>
 
-
-            {/* Input */}
-
-            <form
-              onSubmit={handleSendMessage}
-              className="border-t border-white/[0.05] p-4"
-            >
-
-              <div className="flex gap-3">
-
-                <Input
-                  value={messageInput}
-                  onChange={(event) =>
-                    setMessageInput(
-                      event.target.value
+                <div className="flex gap-2 overflow-x-auto pb-1">
+                  {suggestedQuestions.map(
+                    (question) => (
+                      <button
+                        key={question}
+                        type="button"
+                        onClick={() =>
+                          handleSuggestedQuestion(
+                            question
+                          )
+                        }
+                        className="shrink-0 rounded-lg border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[10px] text-slate-500 transition hover:border-cyan-400/15 hover:bg-cyan-400/[0.03] hover:text-cyan-300"
+                      >
+                        {question}
+                      </button>
                     )
-                  }
-                  placeholder="Ask about this investigation..."
-                  disabled={chatLoading}
-                  className="h-11 border-white/[0.07] bg-black/20 text-sm text-white placeholder:text-slate-700 focus-visible:ring-cyan-500/30"
-                />
-
-                <Button
-                  type="submit"
-                  disabled={
-                    chatLoading ||
-                    !messageInput.trim()
-                  }
-                  className="h-11 w-11 shrink-0 bg-cyan-500 p-0 text-black hover:bg-cyan-400"
-                >
-
-                  {chatLoading ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                  ) : (
-                    <Send className="h-4 w-4" />
                   )}
-
-                </Button>
-
+                </div>
               </div>
 
-            </form>
+              {/* Input */}
+              <form
+                onSubmit={handleSendMessage}
+                className="border-t border-white/[0.06] p-4"
+              >
+                <div className="flex items-end gap-2 rounded-xl border border-white/[0.08] bg-white/[0.025] p-2 transition focus-within:border-cyan-400/20"
+                >
+                  <textarea
+                    value={chatInput}
+                    onChange={(event) =>
+                      setChatInput(event.target.value)
+                    }
+                    onKeyDown={(event) => {
+                      if (
+                        event.key === "Enter" &&
+                        !event.shiftKey
+                      ) {
+                        event.preventDefault();
 
-          </CardContent>
+                        if (!chatLoading) {
+                          event.currentTarget.form?.requestSubmit();
+                        }
+                      }
+                    }}
+                    placeholder="Ask about this transaction..."
+                    rows={2}
+                    disabled={chatLoading}
+                    className="min-h-[44px] flex-1 resize-none bg-transparent px-2 py-1.5 text-xs text-slate-300 outline-none placeholder:text-slate-700 disabled:opacity-50"
+                  />
 
-        </Card>
+                  <button
+                    type="submit"
+                    disabled={
+                      chatLoading ||
+                      !chatInput.trim()
+                    }
+                    className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-cyan-500 text-slate-950 transition hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-30"
+                  >
+                    {chatLoading ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <Send className="h-4 w-4" />
+                    )}
+                  </button>
+                </div>
 
-
-        {/* ================================================= */}
-        {/* FOOTER */}
-        {/* ================================================= */}
-
-        <div className="flex items-center justify-between border-t border-white/[0.05] pt-5 text-[11px] text-slate-600">
-
-          <span>
-            Investigation ID:{" "}
-            {investigation.investigationId}
-          </span>
-
-          <span>
-            LedgerLens Investigation Engine
-          </span>
-
+                <p className="mt-2.5 text-center text-[9px] text-slate-700">
+                  AI answers are grounded in investigation evidence.
+                </p>
+              </form>
+            </div>
+          </motion.aside>
         </div>
 
-      </div>
+        {/* ---------------------------------------------------------------- */}
+        {/* Footer                                                           */}
+        {/* ---------------------------------------------------------------- */}
 
-    </PageTransition>
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-3 border-t border-white/[0.06] py-5">
+          <div className="flex items-center gap-2 text-[9px] text-slate-700">
+            <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
+            LedgerLens Investigation Engine
+          </div>
+
+          <div className="flex items-center gap-3 text-[9px] text-slate-700">
+            <span>Code decides facts</span>
+            <span>•</span>
+            <span>AI explains facts</span>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

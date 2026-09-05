@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import { motion } from "motion/react";
 import { ArrowRight, LockKeyhole, ShieldCheck } from "lucide-react";
@@ -106,16 +107,19 @@ export default function Login() {
               </p>
             </div>
 
+            {/* Error */}
             {error && (
               <div className="mb-5 rounded-lg border border-red-500/20 bg-red-500/10 px-4 py-3 text-sm text-red-300">
                 {error}
               </div>
             )}
 
+            {/* Login form */}
             <form
               onSubmit={handleSubmit}
               className="space-y-5"
             >
+              {/* Email */}
               <div>
                 <label className="mb-2 block text-xs font-medium text-slate-400">
                   Email
@@ -128,10 +132,12 @@ export default function Login() {
                   value={form.email}
                   onChange={handleChange}
                   required
+                  disabled={loading}
                   className="h-11 border-white/[0.08] bg-white/[0.03] text-white placeholder:text-slate-600"
                 />
               </div>
 
+              {/* Password */}
               <div>
                 <label className="mb-2 block text-xs font-medium text-slate-400">
                   Password
@@ -147,11 +153,13 @@ export default function Login() {
                     value={form.password}
                     onChange={handleChange}
                     required
+                    disabled={loading}
                     className="h-11 border-white/[0.08] bg-white/[0.03] pl-10 text-white placeholder:text-slate-600"
                   />
                 </div>
               </div>
 
+              {/* Submit */}
               <Button
                 type="submit"
                 disabled={loading}
@@ -169,6 +177,30 @@ export default function Login() {
               </Button>
             </form>
 
+            {/* Sample Login */}
+            <div className="mt-5 rounded-lg border border-cyan-500/10 bg-cyan-500/[0.04] px-4 py-3">
+              <p className="text-xs font-medium text-cyan-400">
+                Sample Login
+              </p>
+
+              <div className="mt-2 space-y-1 text-[11px] text-slate-500">
+                <p>
+                  Email:{" "}
+                  <span className="font-mono text-slate-300">
+                    test@test.com
+                  </span>
+                </p>
+
+                <p>
+                  Password:{" "}
+                  <span className="font-mono text-slate-300">
+                    test12345
+                  </span>
+                </p>
+              </div>
+            </div>
+
+            {/* Register */}
             <div className="mt-6 text-center text-sm text-slate-500">
               Don't have an account?{" "}
               <Link
@@ -182,6 +214,7 @@ export default function Login() {
           </CardContent>
         </Card>
 
+        {/* Footer */}
         <p className="mt-6 text-center text-[11px] text-slate-600">
           Secure access • HTTP-only authentication • LedgerLens
         </p>
