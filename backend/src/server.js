@@ -5,11 +5,11 @@ import connectDB from "./config/db.js";
 const startServer = async () => {
   await connectDB();
 
-  app.listen(env.port, () => {
-    console.log(
-      `LedgerLens backend running on port ${env.port}`
-    );
-  });
+const PORT = process.env.PORT || 5000;
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log(`Server running on port ${PORT}`);
+});
 };
 
 startServer();
