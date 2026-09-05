@@ -27,7 +27,7 @@ app.use(helmet());
 
 const allowedOrigins = [
   "http://localhost:5173",
-  process.env.FRONTEND_URL,
+  process.env.CLIENT_URL,
 ].filter(Boolean);
 
 app.use(
@@ -74,6 +74,10 @@ app.use(
   "/api/v1/transactions",
   transactionRoutes
 );
+
+app.get("/", (req, res) => {
+    res.send("Backend is running!");
+});
 
 app.use(errorMiddleware);
 
