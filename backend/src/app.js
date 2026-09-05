@@ -75,6 +75,10 @@ app.use(
   transactionRoutes
 );
 
+app.get("/", (req, res) => {
+    res.send("Backend is running!");
+});
+
 app.use(errorMiddleware);
 
 export default app;
